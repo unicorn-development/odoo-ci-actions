@@ -112,12 +112,38 @@ jobs:
           fi
           echo "No repository level ruff config, as intended."
 
-      - name: Fetch config from a version branch
-        id: fetched
+      # GITHUB_STEP_SUMMARY is a distinct file per step, so a later step cannot
+      # read what the action wrote there. These assertions therefore check the
+      # resolved config by its effect: see tests/fixtures/version-sensitive.
+      - name: Fetch config from the 19.0 branch
+        id: fetched_19
         uses: ./ruff
         with:
           odoo-version: "19.0"
-          paths: tests/fixtures/clean
+          paths: tests/fixtures/version-sensitive
+
+      - name: Fetch config from master
+        id: fetched_master
+        uses: ./ruff
+        with:
+          odoo-version: master
+          paths: tests/fixtures/version-sensitive
+
+      - name: Config came from the requested branch, not just any branch
+        env:
+          EXIT_19: ${{ steps.fetched_19.outputs.exit-code }}
+          FINDINGS_19: ${{ steps.fetched_19.outputs.has-findings }}
+          EXIT_MASTER: ${{ steps.fetched_master.outputs.exit-code }}
+          FINDINGS_MASTER: ${{ steps.fetched_master.outputs.has-findings }}
+        run: |
+          set -euo pipefail
+          # py310: UP017 does not apply.
+          [ "$EXIT_19" = "0" ] || { echo "19.0 exit-code=$EXIT_19, expected 0"; exit 1; }
+          [ "$FINDINGS_19" = "false" ] || { echo "19.0 has-findings=$FINDINGS_19, expected false"; exit 1; }
+          # py312: UP017 applies. Different result from the same fixture proves
+          # the config really was fetched per branch.
+          [ "$EXIT_MASTER" = "1" ] || { echo "master exit-code=$EXIT_MASTER, expected 1"; exit 1; }
+          [ "$FINDINGS_MASTER" = "true" ] || { echo "master has-findings=$FINDINGS_MASTER, expected true"; exit 1; }
 
       - name: Unresolvable branch falls back to the vendored config
         id: fallback
@@ -125,38 +151,52 @@ jobs:
         with:
           # No such branch, so curl --fail fails for real. No mocking needed.
           odoo-version: branch-that-does-not-exist-10957
-          paths: tests/fixtures/clean
+          paths: tests/fixtures/version-sensitive
 
-      - name: Resolved sources were reported in the job summary
+      - name: Vendored fallback was used, never bare ruff defaults
         env:
-          FETCHED_EXIT: ${{ steps.fetched.outputs.exit-code }}
-          FALLBACK_EXIT: ${{ steps.fallback.outputs.exit-code }}
+          EXIT_CODE: ${{ steps.fallback.outputs.exit-code }}
+          HAS_FINDINGS: ${{ steps.fallback.outputs.has-findings }}
         run: |
           set -euo pipefail
-          [ "$FETCHED_EXIT" = "0" ] || { echo "fetched exit-code=$FETCHED_EXIT"; exit 1; }
-          [ "$FALLBACK_EXIT" = "0" ] || { echo "fallback exit-code=$FALLBACK_EXIT"; exit 1; }
-          grep -q "Config: odoo/odoo@19.0" "$GITHUB_STEP_SUMMARY" \
-            || { echo "summary is missing the fetched config source"; exit 1; }
-          grep -q "Config: vendored fallback" "$GITHUB_STEP_SUMMARY" \
-            || { echo "summary is missing the vendored fallback source"; exit 1; }
+          # The vendored copy tracks master, so it must behave like master.
+          # Bare ruff defaults do not select UP and would report clean here.
+          [ "$EXIT_CODE" = "1" ] || { echo "exit-code=$EXIT_CODE, expected 1"; exit 1; }
+          [ "$HAS_FINDINGS" = "true" ] || { echo "has-findings=$HAS_FINDINGS, expected true"; exit 1; }
+
+      - name: No odoo-version and a non-version base branch resolves to master
+        id: auto
+        uses: ./ruff
+        with:
+          paths: tests/fixtures/version-sensitive
+
+      - name: Auto-detection fell through to master
+        env:
+          HAS_FINDINGS: ${{ steps.auto.outputs.has-findings }}
+        run: |
+          set -euo pipefail
+          [ "$HAS_FINDINGS" = "true" ] || { echo "has-findings=$HAS_FINDINGS, expected true"; exit 1; }
 
       # Resolution step 2 inspects the workspace root, which is what a consuming
       # module repo looks like, so the fixture has to be a config at the root.
       - name: Give the workspace a ruff config of its own
-        run: cp ruff/configs/odoo-fallback.ruff.toml .ruff.toml
+        run: |
+          set -euo pipefail
+          printf 'target-version = "py310"\n[lint]\nselect = ["UP"]\n' > .ruff.toml
 
       - name: Lint a repository that carries its own config
         id: repo_config
         uses: ./ruff
         with:
-          paths: tests/fixtures/clean
+          paths: tests/fixtures/version-sensitive
 
-      - name: Repository config was used, without an upstream fetch
+      - name: Repository config won over the upstream fetch
         env:
           EXIT_CODE: ${{ steps.repo_config.outputs.exit-code }}
+          HAS_FINDINGS: ${{ steps.repo_config.outputs.has-findings }}
         run: |
           set -euo pipefail
           rm -f .ruff.toml
+          # py310 again: had the fetch won, master's py312 would have flagged it.
           [ "$EXIT_CODE" = "0" ] || { echo "exit-code=$EXIT_CODE, expected 0"; exit 1; }
-          grep -q "Config: repository config, .ruff.toml" "$GITHUB_STEP_SUMMARY" \
-            || { echo "summary does not report the repository config"; exit 1; }
+          [ "$HAS_FINDINGS" = "false" ] || { echo "has-findings=$HAS_FINDINGS, expected false"; exit 1; }

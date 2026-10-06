@@ -160,6 +160,11 @@ runs:
       run: |
         set -uo pipefail
 
+        # The runner executes composite steps with -e. The ruff exit code is
+        # the entire signal here, so disable it deliberately rather than
+        # letting it kill the step before the code can be read.
+        set +e
+
         args=(check --no-fix --output-format=github)
         if [ -n "$CONFIG_PATH" ]; then
           args+=(--config "$CONFIG_PATH")

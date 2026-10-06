@@ -11,3 +11,8 @@ Used by `.github/workflows/test.yml` only.
 Note that this repository deliberately has **no** ruff config at its root. One
 would win config resolution step 2 in every self-test and leave steps 3 and 4
 untested.
+
+`version-sensitive/` is clean under `target-version = "py310"` and dirty under
+`py312`, which is how the resolution tests tell which config actually won.
+`GITHUB_STEP_SUMMARY` is a separate file per step, so a later step cannot read
+what the action wrote there; the resolved config has to be asserted by effect.
