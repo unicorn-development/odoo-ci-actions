@@ -1,0 +1,76 @@
+name: Odoo manifest version bump check
+description: >-
+  Fail a pull request that changes files inside an Odoo module without
+  increasing that module's manifest version. Compares against the current tip
+  of the base branch. Never modifies code.
+
+inputs:
+  modules-root:
+    description: >-
+      Directory the modules live in. Changed files outside it belong to no
+      module and need no bump.
+    required: false
+    default: '.'
+  fail-on-findings:
+    description: >-
+      "true" makes a missing bump fail the job. The inverse of ruff's default,
+      so this check blocks from day one; a repository can still stage its
+      rollout by turning it off.
+    required: false
+    default: 'true'
+
+outputs:
+  modules-checked:
+    description: >-
+      JSON array of the touched modules with their base and head version and
+      the result for each.
+    value: ${{ steps.check.outputs.modules-checked }}
+  modules-missing-bump:
+    description: JSON array of the modules that changed without a version increase.
+    value: ${{ steps.check.outputs.modules-missing-bump }}
+
+runs:
+  using: composite
+  steps:
+    - name: Check version bumps
+      id: check
+      shell: bash
+      env:
+        MODULES_ROOT: ${{ inputs.modules-root }}
+        FAIL_ON_FINDINGS: ${{ inputs.fail-on-findings }}
+        SCRIPT: ${{ github.action_path }}/check_version_bump.py
+      run: |
+        set -uo pipefail
+
+        # Only a pull request has a base branch to compare against. Without
+        # one there is nothing to check, and saying so is the only honest
+        # outcome: a green check here would mean "not verified".
+        if [ -z "${GITHUB_BASE_REF:-}" ]; then
+          echo "::error title=Version bump::GITHUB_BASE_REF is empty. This check only runs on pull_request events."
+          exit 1
+        fi
+
+        # The runner executes composite steps with -e, and the script's exit
+        # code is the entire signal here.
+        set +e
+        python3 "$SCRIPT" --modules-root "$MODULES_ROOT" --base-ref "origin/$GITHUB_BASE_REF"
+        code=$?
+
+        if [ "$code" -eq 0 ]; then
+          exit 0
+        fi
+
+        if [ "$code" -eq 1 ]; then
+          if [ "$FAIL_ON_FINDINGS" = "true" ]; then
+            echo "::error title=Version bump::A changed module is missing a version bump. See the annotations above."
+            exit 1
+          fi
+          echo "::warning title=Version bump::A changed module is missing a version bump. This does not block the merge."
+          exit 0
+        fi
+
+        # Exit code 2 means the check could not run: an unparseable manifest,
+        # a missing version key, a base branch that was never fetched.
+        # Reporting that as a pass would be a green check with zero signal.
+        echo "::error title=Version bump::The check could not complete, exit code $code."
+        exit 1

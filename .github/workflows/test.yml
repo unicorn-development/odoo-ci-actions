@@ -200,3 +200,113 @@ jobs:
           # py310 again: had the fetch won, master's py312 would have flagged it.
           [ "$EXIT_CODE" = "0" ] || { echo "exit-code=$EXIT_CODE, expected 0"; exit 1; }
           [ "$HAS_FINDINGS" = "false" ] || { echo "has-findings=$HAS_FINDINGS, expected false"; exit 1; }
+
+  version-bump-logic:
+    name: Version bump logic
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      # The fixtures a version bump check needs are git histories, so they are
+      # built as real repositories in the test rather than stored as files.
+      - name: Scenario tests
+        run: python3 -m unittest discover -s tests -v
+
+  version-bump-action:
+    name: Version bump action
+    # The action derives its base ref from GITHUB_BASE_REF, which only a pull
+    # request has. On push there is nothing to compare against and nothing to
+    # assert, so the job is skipped rather than faked.
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Identity for the fixture commits
+        run: |
+          set -euo pipefail
+          git config user.email "ci@example.com"
+          git config user.name "CI"
+
+      - name: Scenario, module bumped
+        run: tests/version_bump_scenario.sh 2.0.0 2.0.1
+
+      - name: Bumped module
+        id: bumped
+        uses: ./version-bump
+        with:
+          modules-root: tests/fixtures/version-bump
+
+      - name: Bumped module passes and reports both versions
+        env:
+          CHECKED: ${{ steps.bumped.outputs.modules-checked }}
+          MISSING: ${{ steps.bumped.outputs.modules-missing-bump }}
+        run: |
+          set -euo pipefail
+          [ "$MISSING" = "[]" ] || { echo "modules-missing-bump=$MISSING, expected []"; exit 1; }
+          echo "$CHECKED" | jq -e '
+            length == 1
+            and .[0].module == "tests/fixtures/version-bump/mod_a"
+            and .[0].base == "2.0.0"
+            and .[0].head == "2.0.1"
+            and .[0].status == "ok"
+          ' > /dev/null || { echo "modules-checked=$CHECKED"; exit 1; }
+
+      - name: Scenario, module not bumped
+        run: tests/version_bump_scenario.sh 2.0.0 2.0.0
+
+      - name: Unbumped module, blocking
+        id: unbumped_hard
+        uses: ./version-bump
+        continue-on-error: true
+        with:
+          modules-root: tests/fixtures/version-bump
+
+      - name: Unbumped module fails by default
+        env:
+          OUTCOME: ${{ steps.unbumped_hard.outcome }}
+          MISSING: ${{ steps.unbumped_hard.outputs.modules-missing-bump }}
+        run: |
+          set -euo pipefail
+          [ "$OUTCOME" = "failure" ] || { echo "outcome=$OUTCOME, expected failure"; exit 1; }
+          [ "$MISSING" = '["tests/fixtures/version-bump/mod_a"]' ] \
+            || { echo "modules-missing-bump=$MISSING"; exit 1; }
+
+      - name: Unbumped module, non-blocking
+        id: unbumped_soft
+        uses: ./version-bump
+        with:
+          modules-root: tests/fixtures/version-bump
+          fail-on-findings: false
+
+      - name: fail-on-findings false annotates without failing
+        env:
+          OUTCOME: ${{ steps.unbumped_soft.outcome }}
+          MISSING: ${{ steps.unbumped_soft.outputs.modules-missing-bump }}
+        run: |
+          set -euo pipefail
+          [ "$OUTCOME" = "success" ] || { echo "outcome=$OUTCOME, expected success"; exit 1; }
+          [ "$MISSING" = '["tests/fixtures/version-bump/mod_a"]' ] \
+            || { echo "modules-missing-bump=$MISSING"; exit 1; }
+
+      - name: Scenario, unparseable manifest
+        run: tests/version_bump_scenario.sh 2.0.0 broken
+
+      - name: Unparseable manifest, non-blocking
+        id: broken_manifest
+        uses: ./version-bump
+        continue-on-error: true
+        with:
+          modules-root: tests/fixtures/version-bump
+          fail-on-findings: false
+
+      - name: A check that could not run always fails the job
+        env:
+          OUTCOME: ${{ steps.broken_manifest.outcome }}
+        run: |
+          set -euo pipefail
+          [ "$OUTCOME" = "failure" ] || { echo "outcome=$OUTCOME, expected failure"; exit 1; }

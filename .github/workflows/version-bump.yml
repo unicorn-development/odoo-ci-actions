@@ -1,0 +1,68 @@
+# Deployment layer. Owns the job shape (runner, permissions, checkout, name);
+# version-bump/action.yml owns what the check actually does.
+#
+# Deliberately no `paths:` filter anywhere in this chain. A required status
+# check that never runs leaves a pull request waiting forever; "nothing
+# relevant changed" is handled by the action passing, not by the workflow
+# being skipped.
+name: Version bump
+
+on:
+  workflow_call:
+    inputs:
+      modules-root:
+        description: Directory the modules live in.
+        type: string
+        required: false
+        default: '.'
+      fail-on-findings:
+        description: Whether a missing bump fails the job.
+        type: boolean
+        required: false
+        default: true
+    outputs:
+      modules-checked:
+        description: JSON array of the touched modules with base and head version.
+        value: ${{ jobs.version-bump.outputs.modules-checked }}
+      modules-missing-bump:
+        description: JSON array of the modules missing a version increase.
+        value: ${{ jobs.version-bump.outputs.modules-missing-bump }}
+
+# The action never writes.
+permissions:
+  contents: read
+
+jobs:
+  version-bump:
+    # Keep this name stable: renaming it silently drops any ruleset that
+    # requires the check, leaving branches unprotected without a signal.
+    name: Version bump
+    runs-on: ubuntu-latest
+    outputs:
+      modules-checked: ${{ steps.version-bump.outputs.modules-checked }}
+      modules-missing-bump: ${{ steps.version-bump.outputs.modules-missing-bump }}
+    steps:
+      - name: Checkout caller repository
+        uses: actions/checkout@v7
+        with:
+          # The base branch has to be present as origin/<base>, and at its
+          # current tip, not at the merge base.
+          fetch-depth: 0
+
+      # Same self-checkout as the ruff wrapper: a reusable workflow cannot
+      # reach its own repository with `uses: ./`, and job_workflow_sha keeps
+      # workflow and action on the same revision without an internal pin.
+      - name: Checkout odoo-ci-actions
+        uses: actions/checkout@v7
+        with:
+          repository: unicorn-development/odoo-ci-actions
+          ref: ${{ github.job_workflow_sha }}
+          path: .odoo-ci-actions
+          sparse-checkout: version-bump
+
+      - name: Version bump
+        id: version-bump
+        uses: ./.odoo-ci-actions/version-bump
+        with:
+          modules-root: ${{ inputs.modules-root }}
+          fail-on-findings: ${{ inputs.fail-on-findings }}
