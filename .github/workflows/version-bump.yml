@@ -1,0 +1,84 @@
+# Deployment layer. Owns the job shape (runner, permissions, checkout, name);
+# version-bump/action.yml owns what the check actually does.
+#
+# Deliberately no `paths:` filter anywhere in this chain. A required status
+# check that never runs leaves a pull request waiting forever; "nothing
+# relevant changed" is handled by the action passing, not by the workflow
+# being skipped.
+name: Version bump
+
+on:
+  workflow_call:
+    inputs:
+      modules-root:
+        description: Directory the modules live in.
+        type: string
+        required: false
+        default: '.'
+      fail-on-findings:
+        description: Whether a missing bump fails the job.
+        type: boolean
+        required: false
+        default: true
+      actions-ref:
+        description: >-
+          Ref of odoo-ci-actions the check itself is taken from. Only override
+          it to test an unreleased branch of that repository.
+        type: string
+        required: false
+        default: v1
+    outputs:
+      modules-checked:
+        description: JSON array of the touched modules with base and head version.
+        value: ${{ jobs.version-bump.outputs.modules-checked }}
+      modules-missing-bump:
+        description: JSON array of the modules missing a version increase.
+        value: ${{ jobs.version-bump.outputs.modules-missing-bump }}
+
+# The action never writes.
+permissions:
+  contents: read
+
+jobs:
+  version-bump:
+    # Keep this name stable: renaming it silently drops any ruleset that
+    # requires the check, leaving branches unprotected without a signal.
+    name: Version bump
+    runs-on: ubuntu-latest
+    outputs:
+      modules-checked: ${{ steps.version-bump.outputs.modules-checked }}
+      modules-missing-bump: ${{ steps.version-bump.outputs.modules-missing-bump }}
+    steps:
+      - name: Checkout caller repository
+        uses: actions/checkout@v7
+        with:
+          # The base branch has to be present as origin/<base>, and at its
+          # current tip, not at the merge base.
+          fetch-depth: 0
+
+      # A reusable workflow cannot reach its own repository with `uses: ./`,
+      # because relative paths resolve against the caller's workspace, and it
+      # cannot discover its own ref either: github.job_workflow_sha and
+      # github.job_workflow_ref are both empty in a called workflow's context
+      # (actions/runner#2417). A checkout without an explicit ref therefore
+      # silently takes the default branch, so the action would come from main
+      # no matter which tag the caller pinned.
+      #
+      # The ref is pinned to the major tag instead, which release.yml moves to
+      # the release commit, so wrapper and action always travel together for
+      # callers on @v1. Overriding actions-ref is for testing an unreleased
+      # branch of this repository from a consumer repository, nothing else.
+      - name: Checkout odoo-ci-actions
+        uses: actions/checkout@v7
+        with:
+          repository: unicorn-development/odoo-ci-actions
+          ref: ${{ inputs.actions-ref }}
+          path: .odoo-ci-actions
+          sparse-checkout: version-bump
+
+      - name: Version bump
+        id: version-bump
+        uses: ./.odoo-ci-actions/version-bump
+        with:
+          modules-root: ${{ inputs.modules-root }}
+          fail-on-findings: ${{ inputs.fail-on-findings }}

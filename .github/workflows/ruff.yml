@@ -36,6 +36,13 @@ on:
         type: boolean
         required: false
         default: false
+      actions-ref:
+        description: >-
+          Ref of odoo-ci-actions the check itself is taken from. Only override
+          it to test an unreleased branch of that repository.
+        type: string
+        required: false
+        default: v1
     outputs:
       exit-code:
         description: Raw ruff exit code (0 clean, 1 findings, 2 error).
@@ -62,10 +69,17 @@ jobs:
         uses: actions/checkout@v7
 
       # A reusable workflow cannot reach its own repository with `uses: ./`,
-      # because relative paths resolve against the caller's workspace. Checking
-      # ourselves out at job_workflow_sha -- the commit of the reusable workflow
-      # currently running -- keeps workflow and action on the same revision
-      # without an internal version pin that would need bumping every release.
+      # because relative paths resolve against the caller's workspace, and it
+      # cannot discover its own ref either: github.job_workflow_sha and
+      # github.job_workflow_ref are both empty in a called workflow's context
+      # (actions/runner#2417). A checkout without an explicit ref therefore
+      # silently takes the default branch, so the action would come from main
+      # no matter which tag the caller pinned.
+      #
+      # The ref is pinned to the major tag instead, which release.yml moves to
+      # the release commit, so wrapper and action always travel together for
+      # callers on @v1. Overriding actions-ref is for testing an unreleased
+      # branch of this repository from a consumer repository, nothing else.
       #
       # sparse-checkout keeps tests/fixtures out of the caller's workspace, so
       # the deliberately dirty fixtures can never be linted as caller code.
@@ -74,7 +88,7 @@ jobs:
         uses: actions/checkout@v7
         with:
           repository: unicorn-development/odoo-ci-actions
-          ref: ${{ github.job_workflow_sha }}
+          ref: ${{ inputs.actions-ref }}
           path: .odoo-ci-actions
           sparse-checkout: ruff
 
