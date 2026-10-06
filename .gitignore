@@ -1,0 +1,4 @@
+# Local virtualenvs and caches only; nothing in this repo is generated.
+.venv/
+__pycache__/
+.ruff_cache/

@@ -1,0 +1,198 @@
+name: Odoo ruff check
+description: >-
+  Lint an Odoo module repository with ruff, using Odoo's own lint configuration
+  resolved from the repository, the matching odoo/odoo version branch, or a
+  vendored fallback. Never modifies code.
+
+inputs:
+  config:
+    description: >-
+      Explicit path or URL to a ruff config. Highest precedence; skips all
+      other resolution steps.
+    required: false
+    default: ''
+  odoo-version:
+    description: >-
+      odoo/odoo branch the config is fetched from, e.g. "19.0". Empty means
+      auto-detect from the pull request base branch, falling back to master.
+    required: false
+    default: ''
+  ruff-version:
+    description: >-
+      pip version specifier for ruff, appended directly to "ruff", so it must
+      include the operator (">=0.16.1", "==0.16.1").
+    required: false
+    default: '>=0.16.1'
+  python-version:
+    description: >-
+      Python used to run ruff. Has no effect on lint results -- the syntax
+      level comes from target-version in the resolved config -- and is pinned
+      so output cannot change when a branch's supported interpreter moves.
+    required: false
+    default: '3.12'
+  paths:
+    description: Space separated paths to lint.
+    required: false
+    default: '.'
+  fail-on-findings:
+    description: >-
+      "true" makes lint findings fail the job. Findings always annotate the
+      diff either way.
+    required: false
+    default: 'false'
+
+outputs:
+  exit-code:
+    description: Raw ruff exit code (0 clean, 1 findings, 2 error).
+    value: ${{ steps.ruff.outputs.exit-code }}
+  has-findings:
+    description: '"true" when ruff reported findings, "false" otherwise.'
+    value: ${{ steps.ruff.outputs.has-findings }}
+
+runs:
+  using: composite
+  steps:
+    - name: Set up Python
+      uses: actions/setup-python@v7
+      with:
+        python-version: ${{ inputs.python-version }}
+
+    # A failure here is an infrastructure failure and fails the job, so a
+    # broken runner is never reported as "no findings".
+    - name: Install ruff
+      shell: bash
+      env:
+        RUFF_VERSION: ${{ inputs.ruff-version }}
+      run: python -m pip install --disable-pip-version-check "ruff${RUFF_VERSION}"
+
+    - name: Resolve ruff config
+      id: config
+      shell: bash
+      env:
+        CONFIG: ${{ inputs.config }}
+        ODOO_VERSION: ${{ inputs.odoo-version }}
+        FALLBACK_CONFIG: ${{ github.action_path }}/configs/odoo-fallback.ruff.toml
+      run: |
+        set -euo pipefail
+
+        # Empty config_path means "let ruff auto-discover", which is only used
+        # when the repository carries its own config.
+        config_path=""
+        source=""
+
+        if [ -n "$CONFIG" ]; then
+          # 1. Explicit input wins. A URL that cannot be downloaded is an
+          #    infrastructure failure, not a reason to lint with other rules.
+          case "$CONFIG" in
+            http://*|https://*)
+              config_path="$RUNNER_TEMP/ruff-config-input.toml"
+              curl --fail --silent --show-error --location --retry 3 \
+                --output "$config_path" "$CONFIG"
+              source="\`config\` input, downloaded from $CONFIG"
+              ;;
+            *)
+              if [ ! -f "$CONFIG" ]; then
+                echo "::error title=Ruff::config input '$CONFIG' does not exist"
+                exit 1
+              fi
+              config_path="$CONFIG"
+              source="\`config\` input, $CONFIG"
+              ;;
+          esac
+        else
+          # 2. The repository's own config.
+          repo_config=""
+          for candidate in .ruff.toml ruff.toml; do
+            if [ -f "$candidate" ]; then
+              repo_config="$candidate"
+              break
+            fi
+          done
+          if [ -z "$repo_config" ] && [ -f pyproject.toml ] \
+             && grep -q '^\[tool\.ruff' pyproject.toml; then
+            repo_config="pyproject.toml"
+          fi
+
+          if [ -n "$repo_config" ]; then
+            source="repository config, $repo_config (ruff auto-discovery)"
+          else
+            # 3. Upstream Odoo config for the matching version branch.
+            branch="$ODOO_VERSION"
+            if [ -z "$branch" ]; then
+              if [[ "${GITHUB_BASE_REF:-}" =~ ^[0-9]+\.[0-9]+$ ]]; then
+                branch="$GITHUB_BASE_REF"
+              else
+                branch="master"
+              fi
+            fi
+            url="https://raw.githubusercontent.com/odoo/odoo/$branch/ruff.toml"
+            fetched="$RUNNER_TEMP/odoo-ruff.toml"
+
+            if curl --fail --silent --show-error --location --retry 3 \
+                 --output "$fetched" "$url"; then
+              config_path="$fetched"
+              source="odoo/odoo@$branch, $url"
+            else
+              # 4. Vendored copy. Bare ruff defaults would bury the diff in
+              #    findings Odoo does not enforce, so they are never used.
+              echo "::warning title=Ruff::Could not fetch $url. Falling back to the vendored Odoo config, which may be out of date."
+              config_path="$FALLBACK_CONFIG"
+              source="vendored fallback, upstream fetch from $url failed"
+            fi
+          fi
+        fi
+
+        echo "config-path=$config_path" >> "$GITHUB_OUTPUT"
+        {
+          echo "### Ruff"
+          echo
+          echo "Config: $source"
+        } >> "$GITHUB_STEP_SUMMARY"
+        echo "Resolved ruff config: $source"
+
+    - name: Ruff check
+      id: ruff
+      shell: bash
+      env:
+        CONFIG_PATH: ${{ steps.config.outputs.config-path }}
+        PATHS: ${{ inputs.paths }}
+        FAIL_ON_FINDINGS: ${{ inputs.fail-on-findings }}
+      run: |
+        set -uo pipefail
+
+        args=(check --no-fix --output-format=github)
+        if [ -n "$CONFIG_PATH" ]; then
+          args+=(--config "$CONFIG_PATH")
+        fi
+
+        # PATHS is a space separated list and must word split.
+        # shellcheck disable=SC2086
+        ruff "${args[@]}" $PATHS
+        code=$?
+        echo "exit-code=$code" >> "$GITHUB_OUTPUT"
+
+        if [ "$code" -eq 0 ]; then
+          echo "has-findings=false" >> "$GITHUB_OUTPUT"
+          echo "No findings." >> "$GITHUB_STEP_SUMMARY"
+          exit 0
+        fi
+
+        if [ "$code" -eq 1 ]; then
+          echo "has-findings=true" >> "$GITHUB_OUTPUT"
+          if [ "$FAIL_ON_FINDINGS" = "true" ]; then
+            echo "::error title=Ruff::Ruff reported findings. See the annotations above."
+            echo "Ruff reported findings. See the job annotations." >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+          echo "::warning title=Ruff::Ruff reported findings. See the annotations above. This does not block the merge."
+          echo "Ruff reported findings, see the job annotations. Not merge blocking." >> "$GITHUB_STEP_SUMMARY"
+          exit 0
+        fi
+
+        # Exit code 2 means ruff could not run: bad config, unreadable file,
+        # crash. Reporting that as "no findings" would be a green check with
+        # zero signal, so it fails regardless of fail-on-findings.
+        echo "has-findings=false" >> "$GITHUB_OUTPUT"
+        echo "::error title=Ruff::Ruff exited with code $code, it could not complete the check."
+        echo "Ruff exited with code $code, it could not complete the check." >> "$GITHUB_STEP_SUMMARY"
+        exit 1

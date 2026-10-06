@@ -1,0 +1,44 @@
+# Keeps the vendored fallback from rotting. Without this, resolution step 4
+# would quietly drift further from Odoo's actual rules every release.
+name: Sync Odoo ruff config
+
+on:
+  schedule:
+    - cron: "17 4 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  sync:
+    name: Sync vendored config
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Fetch upstream ruff.toml
+        env:
+          # master, because that is also the terminal branch of config
+          # resolution when no version branch applies.
+          URL: https://raw.githubusercontent.com/odoo/odoo/master/ruff.toml
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --location --retry 3 \
+            --output ruff/configs/odoo-fallback.ruff.toml "$URL"
+
+      # Opens a PR only when the fetched file actually differs.
+      # Note: PRs opened with GITHUB_TOKEN do not trigger other workflows, so
+      # test.yml has to be re-run manually or by pushing to the branch.
+      - name: Open pull request on change
+        uses: peter-evans/create-pull-request@v8
+        with:
+          branch: sync/odoo-ruff-config
+          title: "Sync vendored Odoo ruff config"
+          commit-message: "sync vendored odoo ruff config"
+          body: |
+            `odoo/odoo@master`'s `ruff.toml` changed. This updates the vendored
+            fallback used when the upstream fetch fails.
+          add-paths: ruff/configs/odoo-fallback.ruff.toml

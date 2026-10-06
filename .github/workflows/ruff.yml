@@ -1,0 +1,90 @@
+# Deployment layer. Owns the job shape (runner, permissions, checkout, name);
+# ruff/action.yml owns what the check actually does. Changing how we deploy
+# (caller stub today, org ruleset later) touches this file only.
+name: Ruff
+
+on:
+  workflow_call:
+    inputs:
+      config:
+        description: Explicit path or URL to a ruff config.
+        type: string
+        required: false
+        default: ''
+      odoo-version:
+        description: odoo/odoo branch for the config. Empty means auto-detect.
+        type: string
+        required: false
+        default: ''
+      ruff-version:
+        description: pip version specifier for ruff.
+        type: string
+        required: false
+        default: '>=0.16.1'
+      python-version:
+        description: Python used to run ruff. Does not affect lint results.
+        type: string
+        required: false
+        default: '3.12'
+      paths:
+        description: Space separated paths to lint.
+        type: string
+        required: false
+        default: '.'
+      fail-on-findings:
+        description: Whether lint findings fail the job.
+        type: boolean
+        required: false
+        default: false
+    outputs:
+      exit-code:
+        description: Raw ruff exit code (0 clean, 1 findings, 2 error).
+        value: ${{ jobs.ruff.outputs.exit-code }}
+      has-findings:
+        description: '"true" when ruff reported findings.'
+        value: ${{ jobs.ruff.outputs.has-findings }}
+
+# The action never writes. Enforced at the token level, not just by --no-fix.
+permissions:
+  contents: read
+
+jobs:
+  ruff:
+    # Keep this name stable: renaming it silently drops any ruleset that
+    # requires the check.
+    name: Ruff
+    runs-on: ubuntu-latest
+    outputs:
+      exit-code: ${{ steps.ruff.outputs.exit-code }}
+      has-findings: ${{ steps.ruff.outputs.has-findings }}
+    steps:
+      - name: Checkout caller repository
+        uses: actions/checkout@v7
+
+      # A reusable workflow cannot reach its own repository with `uses: ./`,
+      # because relative paths resolve against the caller's workspace. Checking
+      # ourselves out at job_workflow_sha -- the commit of the reusable workflow
+      # currently running -- keeps workflow and action on the same revision
+      # without an internal version pin that would need bumping every release.
+      #
+      # sparse-checkout keeps tests/fixtures out of the caller's workspace, so
+      # the deliberately dirty fixtures can never be linted as caller code.
+      # Everything the action needs must therefore live under ruff/.
+      - name: Checkout odoo-ci-actions
+        uses: actions/checkout@v7
+        with:
+          repository: unicorn-development/odoo-ci-actions
+          ref: ${{ github.job_workflow_sha }}
+          path: .odoo-ci-actions
+          sparse-checkout: ruff
+
+      - name: Ruff
+        id: ruff
+        uses: ./.odoo-ci-actions/ruff
+        with:
+          config: ${{ inputs.config }}
+          odoo-version: ${{ inputs.odoo-version }}
+          ruff-version: ${{ inputs.ruff-version }}
+          python-version: ${{ inputs.python-version }}
+          paths: ${{ inputs.paths }}
+          fail-on-findings: ${{ inputs.fail-on-findings }}

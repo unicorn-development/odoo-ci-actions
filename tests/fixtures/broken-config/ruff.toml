@@ -1,0 +1,2 @@
+# Deliberately unparseable, to exercise the ruff exit code 2 path.
+this is not valid toml [[[

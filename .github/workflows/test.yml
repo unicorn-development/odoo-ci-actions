@@ -1,0 +1,162 @@
+# Self-test. A regression here would otherwise reach every consuming repo at
+# once, and the failure mode of a lint check is silence: green with no signal.
+name: Test
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  behaviour:
+    name: Behaviour
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      # --- exit codes and findings -------------------------------------------
+      - name: Clean fixture
+        id: clean
+        uses: ./ruff
+        with:
+          config: ruff/configs/odoo-fallback.ruff.toml
+          paths: tests/fixtures/clean
+
+      - name: Clean fixture reports no findings
+        env:
+          EXIT_CODE: ${{ steps.clean.outputs.exit-code }}
+          HAS_FINDINGS: ${{ steps.clean.outputs.has-findings }}
+        run: |
+          set -euo pipefail
+          [ "$EXIT_CODE" = "0" ] || { echo "exit-code=$EXIT_CODE, expected 0"; exit 1; }
+          [ "$HAS_FINDINGS" = "false" ] || { echo "has-findings=$HAS_FINDINGS, expected false"; exit 1; }
+
+      - name: Dirty fixture, non-blocking
+        id: dirty_soft
+        uses: ./ruff
+        with:
+          config: ruff/configs/odoo-fallback.ruff.toml
+          paths: tests/fixtures/dirty
+          fail-on-findings: false
+
+      - name: Dirty fixture annotates but does not fail
+        env:
+          OUTCOME: ${{ steps.dirty_soft.outcome }}
+          EXIT_CODE: ${{ steps.dirty_soft.outputs.exit-code }}
+          HAS_FINDINGS: ${{ steps.dirty_soft.outputs.has-findings }}
+        run: |
+          set -euo pipefail
+          [ "$OUTCOME" = "success" ] || { echo "outcome=$OUTCOME, expected success"; exit 1; }
+          [ "$EXIT_CODE" = "1" ] || { echo "exit-code=$EXIT_CODE, expected 1"; exit 1; }
+          [ "$HAS_FINDINGS" = "true" ] || { echo "has-findings=$HAS_FINDINGS, expected true"; exit 1; }
+
+      - name: Dirty fixture, blocking
+        id: dirty_hard
+        uses: ./ruff
+        continue-on-error: true
+        with:
+          config: ruff/configs/odoo-fallback.ruff.toml
+          paths: tests/fixtures/dirty
+          fail-on-findings: true
+
+      - name: Dirty fixture fails when blocking
+        env:
+          OUTCOME: ${{ steps.dirty_hard.outcome }}
+        run: |
+          set -euo pipefail
+          [ "$OUTCOME" = "failure" ] || { echo "outcome=$OUTCOME, expected failure"; exit 1; }
+
+      - name: Broken config
+        id: broken
+        uses: ./ruff
+        continue-on-error: true
+        with:
+          config: tests/fixtures/broken-config/ruff.toml
+          paths: tests/fixtures/clean
+          fail-on-findings: false
+
+      - name: Broken config fails even when non-blocking
+        env:
+          OUTCOME: ${{ steps.broken.outcome }}
+          EXIT_CODE: ${{ steps.broken.outputs.exit-code }}
+        run: |
+          set -euo pipefail
+          [ "$OUTCOME" = "failure" ] || { echo "outcome=$OUTCOME, expected failure"; exit 1; }
+          [ "$EXIT_CODE" = "2" ] || { echo "exit-code=$EXIT_CODE, expected 2"; exit 1; }
+
+  resolution:
+    name: Config resolution
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      # This repository deliberately carries no ruff config at its root, so
+      # resolution falls through to the fetch and fallback steps below.
+      - name: Guard, repository must have no ruff config of its own
+        run: |
+          set -euo pipefail
+          for f in .ruff.toml ruff.toml; do
+            if [ -f "$f" ]; then
+              echo "$f would shadow resolution steps 3 and 4"
+              exit 1
+            fi
+          done
+          if [ -f pyproject.toml ] && grep -q '^\[tool\.ruff' pyproject.toml; then
+            echo "pyproject.toml [tool.ruff] would shadow resolution steps 3 and 4"
+            exit 1
+          fi
+          echo "No repository level ruff config, as intended."
+
+      - name: Fetch config from a version branch
+        id: fetched
+        uses: ./ruff
+        with:
+          odoo-version: "19.0"
+          paths: tests/fixtures/clean
+
+      - name: Unresolvable branch falls back to the vendored config
+        id: fallback
+        uses: ./ruff
+        with:
+          # No such branch, so curl --fail fails for real. No mocking needed.
+          odoo-version: branch-that-does-not-exist-10957
+          paths: tests/fixtures/clean
+
+      - name: Resolved sources were reported in the job summary
+        env:
+          FETCHED_EXIT: ${{ steps.fetched.outputs.exit-code }}
+          FALLBACK_EXIT: ${{ steps.fallback.outputs.exit-code }}
+        run: |
+          set -euo pipefail
+          [ "$FETCHED_EXIT" = "0" ] || { echo "fetched exit-code=$FETCHED_EXIT"; exit 1; }
+          [ "$FALLBACK_EXIT" = "0" ] || { echo "fallback exit-code=$FALLBACK_EXIT"; exit 1; }
+          grep -q "Config: odoo/odoo@19.0" "$GITHUB_STEP_SUMMARY" \
+            || { echo "summary is missing the fetched config source"; exit 1; }
+          grep -q "Config: vendored fallback" "$GITHUB_STEP_SUMMARY" \
+            || { echo "summary is missing the vendored fallback source"; exit 1; }
+
+      # Resolution step 2 inspects the workspace root, which is what a consuming
+      # module repo looks like, so the fixture has to be a config at the root.
+      - name: Give the workspace a ruff config of its own
+        run: cp ruff/configs/odoo-fallback.ruff.toml .ruff.toml
+
+      - name: Lint a repository that carries its own config
+        id: repo_config
+        uses: ./ruff
+        with:
+          paths: tests/fixtures/clean
+
+      - name: Repository config was used, without an upstream fetch
+        env:
+          EXIT_CODE: ${{ steps.repo_config.outputs.exit-code }}
+        run: |
+          set -euo pipefail
+          rm -f .ruff.toml
+          [ "$EXIT_CODE" = "0" ] || { echo "exit-code=$EXIT_CODE, expected 0"; exit 1; }
+          grep -q "Config: repository config, .ruff.toml" "$GITHUB_STEP_SUMMARY" \
+            || { echo "summary does not report the repository config"; exit 1; }

@@ -1,0 +1,34 @@
+# Moves the vN tag callers track, so fixes reach every module repo without
+# touching a single one of them.
+name: Release
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  move-major-tag:
+    name: Move major tag
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Move major tag
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::notice::$TAG is not a vX.Y.Z tag, nothing to move."
+            exit 0
+          fi
+          major="${TAG%%.*}"
+          # Point at the release commit directly: a shallow checkout does not
+          # necessarily have the tag object available to resolve.
+          git tag -f "$major" "$GITHUB_SHA"
+          git push --force origin "refs/tags/$major"
+          echo "Moved $major to $GITHUB_SHA ($TAG)." >> "$GITHUB_STEP_SUMMARY"
