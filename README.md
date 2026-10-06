@@ -48,7 +48,9 @@ jobs:
 That is the entire per-repository footprint. No ruff config to copy, no version
 to maintain: `v1` is a moving major tag, so fixes propagate on their own.
 
-Pin a full commit SHA instead of `v1` if you need immutability.
+Pin a full commit SHA instead of `v1` if you need immutability, and see
+[how the wrapper finds its own action](#how-the-wrapper-finds-its-own-action):
+pinning the wrapper does not by itself pin the action.
 
 Note that neither workflow uses a `paths:` filter, on purpose. A required
 status check that never runs leaves a pull request waiting for a conclusion
@@ -117,6 +119,7 @@ Two things always fail the job regardless of that setting:
 | `python-version` | `3.12` | Python used to run ruff. |
 | `paths` | `.` | Space separated paths to lint. |
 | `fail-on-findings` | `false` | Whether findings fail the job. |
+| `actions-ref` | `v1` | Ref this repository's action is taken from. See [pinning](#how-the-wrapper-finds-its-own-action). |
 
 ### Outputs
 
@@ -212,6 +215,7 @@ check.
 |---|---|---|
 | `modules-root` | `.` | Directory the modules live in. Changed files outside it are ignored. |
 | `fail-on-findings` | `true` | Whether a missing bump fails the job. |
+| `actions-ref` | `v1` | Ref this repository's action is taken from. See [pinning](#how-the-wrapper-finds-its-own-action). |
 
 ### Outputs
 
@@ -243,6 +247,26 @@ protection, on `main` and `[0-9]*.[0-9]*`. Two things have to stay right:
   pinned in the wrapper.
 - The workflow must not use a `paths:` filter, or a pull request that changes
   nothing relevant would wait forever for a check that never reports.
+
+## How the wrapper finds its own action
+
+A reusable workflow cannot reach files in its own repository with `uses: ./`,
+because relative paths resolve against the caller's workspace. It cannot
+discover its own ref either: `github.job_workflow_sha` and
+`github.job_workflow_ref` are both empty in a called workflow's context
+([actions/runner#2417](https://github.com/actions/runner/issues/2417)), and a
+checkout without an explicit ref silently takes the default branch -- so the
+action would come from `main` whatever tag the caller pinned, with no error to
+show for it.
+
+Each wrapper therefore checks this repository out at the major tag, `v1`, which
+`release.yml` moves to the release commit. Wrapper and action travel together
+for every caller on `@v1`, which is all of them.
+
+The consequence is that pinning a wrapper to a full commit SHA does not pin the
+action with it: the action still comes from `v1`. Override `actions-ref` to pin
+both, or to test an unreleased branch of this repository from a consumer
+repository.
 
 ## Layout
 

@@ -20,6 +20,13 @@ on:
         type: boolean
         required: false
         default: true
+      actions-ref:
+        description: >-
+          Ref of odoo-ci-actions the check itself is taken from. Only override
+          it to test an unreleased branch of that repository.
+        type: string
+        required: false
+        default: v1
     outputs:
       modules-checked:
         description: JSON array of the touched modules with base and head version.
@@ -49,14 +56,23 @@ jobs:
           # current tip, not at the merge base.
           fetch-depth: 0
 
-      # Same self-checkout as the ruff wrapper: a reusable workflow cannot
-      # reach its own repository with `uses: ./`, and job_workflow_sha keeps
-      # workflow and action on the same revision without an internal pin.
+      # A reusable workflow cannot reach its own repository with `uses: ./`,
+      # because relative paths resolve against the caller's workspace, and it
+      # cannot discover its own ref either: github.job_workflow_sha and
+      # github.job_workflow_ref are both empty in a called workflow's context
+      # (actions/runner#2417). A checkout without an explicit ref therefore
+      # silently takes the default branch, so the action would come from main
+      # no matter which tag the caller pinned.
+      #
+      # The ref is pinned to the major tag instead, which release.yml moves to
+      # the release commit, so wrapper and action always travel together for
+      # callers on @v1. Overriding actions-ref is for testing an unreleased
+      # branch of this repository from a consumer repository, nothing else.
       - name: Checkout odoo-ci-actions
         uses: actions/checkout@v7
         with:
           repository: unicorn-development/odoo-ci-actions
-          ref: ${{ github.job_workflow_sha }}
+          ref: ${{ inputs.actions-ref }}
           path: .odoo-ci-actions
           sparse-checkout: version-bump
 
