@@ -34,12 +34,6 @@ inputs:
     description: Space separated paths to lint.
     required: false
     default: '.'
-  fail-on-findings:
-    description: >-
-      "true" makes lint findings fail the job. Findings always annotate the
-      diff either way.
-    required: false
-    default: 'false'
 
 outputs:
   exit-code:
@@ -156,7 +150,6 @@ runs:
       env:
         CONFIG_PATH: ${{ steps.config.outputs.config-path }}
         PATHS: ${{ inputs.paths }}
-        FAIL_ON_FINDINGS: ${{ inputs.fail-on-findings }}
       run: |
         set -uo pipefail
 
@@ -182,21 +175,19 @@ runs:
           exit 0
         fi
 
+        # Findings fail the job. A failing check only blocks a merge when a
+        # ruleset requires it, so "red but still mergeable" is a property of
+        # the ruleset, not something this action needs an input for.
         if [ "$code" -eq 1 ]; then
           echo "has-findings=true" >> "$GITHUB_OUTPUT"
-          if [ "$FAIL_ON_FINDINGS" = "true" ]; then
-            echo "::error title=Ruff::Ruff reported findings. See the annotations above."
-            echo "Ruff reported findings. See the job annotations." >> "$GITHUB_STEP_SUMMARY"
-            exit 1
-          fi
-          echo "::warning title=Ruff::Ruff reported findings. See the annotations above. This does not block the merge."
-          echo "Ruff reported findings, see the job annotations. Not merge blocking." >> "$GITHUB_STEP_SUMMARY"
-          exit 0
+          echo "::error title=Ruff::Ruff reported findings. See the annotations above."
+          echo "Ruff reported findings. See the job annotations." >> "$GITHUB_STEP_SUMMARY"
+          exit 1
         fi
 
         # Exit code 2 means ruff could not run: bad config, unreadable file,
         # crash. Reporting that as "no findings" would be a green check with
-        # zero signal, so it fails regardless of fail-on-findings.
+        # zero signal, so it is kept distinct from a clean run.
         echo "has-findings=false" >> "$GITHUB_OUTPUT"
         echo "::error title=Ruff::Ruff exited with code $code, it could not complete the check."
         echo "Ruff exited with code $code, it could not complete the check." >> "$GITHUB_STEP_SUMMARY"

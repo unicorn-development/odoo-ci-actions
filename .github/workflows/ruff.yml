@@ -31,11 +31,6 @@ on:
         type: string
         required: false
         default: '.'
-      fail-on-findings:
-        description: Whether lint findings fail the job.
-        type: boolean
-        required: false
-        default: false
       actions-ref:
         description: >-
           Ref of odoo-ci-actions the check itself is taken from. Only override
@@ -101,4 +96,3 @@ jobs:
           ruff-version: ${{ inputs.ruff-version }}
           python-version: ${{ inputs.python-version }}
           paths: ${{ inputs.paths }}
-          fail-on-findings: ${{ inputs.fail-on-findings }}

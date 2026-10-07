@@ -35,40 +35,24 @@ jobs:
           [ "$EXIT_CODE" = "0" ] || { echo "exit-code=$EXIT_CODE, expected 0"; exit 1; }
           [ "$HAS_FINDINGS" = "false" ] || { echo "has-findings=$HAS_FINDINGS, expected false"; exit 1; }
 
-      - name: Dirty fixture, non-blocking
-        id: dirty_soft
-        uses: ./ruff
-        with:
-          config: ruff/configs/odoo-fallback.ruff.toml
-          paths: tests/fixtures/dirty
-          fail-on-findings: false
-
-      - name: Dirty fixture annotates but does not fail
-        env:
-          OUTCOME: ${{ steps.dirty_soft.outcome }}
-          EXIT_CODE: ${{ steps.dirty_soft.outputs.exit-code }}
-          HAS_FINDINGS: ${{ steps.dirty_soft.outputs.has-findings }}
-        run: |
-          set -euo pipefail
-          [ "$OUTCOME" = "success" ] || { echo "outcome=$OUTCOME, expected success"; exit 1; }
-          [ "$EXIT_CODE" = "1" ] || { echo "exit-code=$EXIT_CODE, expected 1"; exit 1; }
-          [ "$HAS_FINDINGS" = "true" ] || { echo "has-findings=$HAS_FINDINGS, expected true"; exit 1; }
-
-      - name: Dirty fixture, blocking
-        id: dirty_hard
+      - name: Dirty fixture
+        id: dirty
         uses: ./ruff
         continue-on-error: true
         with:
           config: ruff/configs/odoo-fallback.ruff.toml
           paths: tests/fixtures/dirty
-          fail-on-findings: true
 
-      - name: Dirty fixture fails when blocking
+      - name: Dirty fixture fails and reports findings
         env:
-          OUTCOME: ${{ steps.dirty_hard.outcome }}
+          OUTCOME: ${{ steps.dirty.outcome }}
+          EXIT_CODE: ${{ steps.dirty.outputs.exit-code }}
+          HAS_FINDINGS: ${{ steps.dirty.outputs.has-findings }}
         run: |
           set -euo pipefail
           [ "$OUTCOME" = "failure" ] || { echo "outcome=$OUTCOME, expected failure"; exit 1; }
+          [ "$EXIT_CODE" = "1" ] || { echo "exit-code=$EXIT_CODE, expected 1"; exit 1; }
+          [ "$HAS_FINDINGS" = "true" ] || { echo "has-findings=$HAS_FINDINGS, expected true"; exit 1; }
 
       - name: Broken config
         id: broken
@@ -77,9 +61,8 @@ jobs:
         with:
           config: tests/fixtures/broken-config/ruff.toml
           paths: tests/fixtures/clean
-          fail-on-findings: false
 
-      - name: Broken config fails even when non-blocking
+      - name: Broken config is distinguished from findings
         env:
           OUTCOME: ${{ steps.broken.outcome }}
           EXIT_CODE: ${{ steps.broken.outputs.exit-code }}
@@ -125,6 +108,9 @@ jobs:
       - name: Fetch config from master
         id: fetched_master
         uses: ./ruff
+        # The fixture is dirty under this config, so the step fails by
+        # design. Only its outputs are under test.
+        continue-on-error: true
         with:
           odoo-version: master
           paths: tests/fixtures/version-sensitive
@@ -148,6 +134,9 @@ jobs:
       - name: Unresolvable branch falls back to the vendored config
         id: fallback
         uses: ./ruff
+        # The fixture is dirty under this config, so the step fails by
+        # design. Only its outputs are under test.
+        continue-on-error: true
         with:
           # No such branch, so curl --fail fails for real. No mocking needed.
           odoo-version: branch-that-does-not-exist-10957
@@ -167,6 +156,9 @@ jobs:
       - name: No odoo-version and a non-version base branch resolves to master
         id: auto
         uses: ./ruff
+        # The fixture is dirty under this config, so the step fails by
+        # design. Only its outputs are under test.
+        continue-on-error: true
         with:
           paths: tests/fixtures/version-sensitive
 

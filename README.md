@@ -7,7 +7,7 @@ Two checks live here today, one directory each:
 
 | Check | Catches | Blocks |
 |---|---|---|
-| [ruff](#ruff) | Lint findings, using Odoo's own configuration | No, opt in per repository |
+| [ruff](#ruff) | Lint findings, using Odoo's own configuration | Only where a ruleset requires it |
 | [version bump](#version-bump) | A module changed without raising its manifest version | Yes, from day one |
 
 ## Usage
@@ -87,27 +87,25 @@ job summary on every run.
 The vendored copy is refreshed by a scheduled job that opens a pull request
 whenever Odoo's `ruff.toml` changes.
 
-### Findings do not block by default
+### What fails the job
 
-A repository with existing violations stays mergeable: findings are annotated
-and summarised, and the job still succeeds. Opt into blocking per repository
-once it is clean:
+Findings fail it. So does ruff exit code 2, meaning ruff could not run at all:
+an unparseable config, an unreadable file, a crash. Reporting that as "no
+findings" would be a green check carrying no information. So do infrastructure
+failures: checkout, Python setup, ruff installation, or downloading a config
+given explicitly via the `config` input.
 
-```yaml
-jobs:
-  ruff:
-    uses: unicorn-development/odoo-ci-actions/.github/workflows/ruff.yml@v1
-    with:
-      fail-on-findings: true
-```
+A failing check is not the same as a blocked merge. GitHub blocks a merge only
+on a *required* status check, so a repository with existing violations stays
+mergeable while `ruff / Ruff` is absent from the ruleset: the pull request goes
+red, the annotations are on the diff, and the merge button still works. Require
+the check once the repository is clean.
 
-Two things always fail the job regardless of that setting:
-
-- ruff exit code 2, meaning ruff could not run at all: an unparseable config,
-  an unreadable file, a crash. Reporting that as "no findings" would be a green
-  check carrying no information.
-- Infrastructure failures: checkout, Python setup, ruff installation, or
-  downloading a config given explicitly via the `config` input.
+There is deliberately no soft mode. A GitHub Actions job can only conclude
+success, failure, cancelled or skipped -- there is no amber "failed but
+mergeable" -- so a non-failing mode meant a green check carrying findings
+nobody had to look at, which is the failure mode this repository exists to
+avoid.
 
 ### Inputs
 
@@ -118,7 +116,6 @@ Two things always fail the job regardless of that setting:
 | `ruff-version` | `>=0.16.1` | pip version specifier, so it must include the operator. Odoo's config needs 0.16.1 or newer. |
 | `python-version` | `3.12` | Python used to run ruff. |
 | `paths` | `.` | Space separated paths to lint. |
-| `fail-on-findings` | `false` | Whether findings fail the job. |
 | `actions-ref` | `v1` | Ref this repository's action is taken from. See [pinning](#how-the-wrapper-finds-its-own-action). |
 
 ### Outputs

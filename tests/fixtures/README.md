@@ -5,7 +5,7 @@ Used by `.github/workflows/test.yml` only.
 | Fixture | Purpose |
 |---|---|
 | `clean/` | Passes Odoo's ruff config. Asserts exit 0 / `has-findings=false`. |
-| `dirty/` | Known violations. Asserts the blocking and non-blocking behaviour. |
+| `dirty/` | Known violations. Asserts exit 1 / `has-findings=true` and a failed step. |
 | `broken-config/` | Unparseable config. Asserts ruff exit code 2 always fails the job. |
 | `version-bump/` | Not stored here. Built by `../version_bump_scenario.sh` during the self-test, because the fixture a version bump check needs is a git history, not a file. |
 
