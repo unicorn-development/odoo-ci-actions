@@ -27,7 +27,7 @@ permissions:
   contents: read
 jobs:
   ruff:
-    uses: unicorn-development/odoo-ci-actions/.github/workflows/ruff.yml@v1
+    uses: unicorn-development/odoo-ci-actions/.github/workflows/ruff.yml@v2
 ```
 
 ```yaml
@@ -42,13 +42,13 @@ permissions:
   contents: read
 jobs:
   version-bump:
-    uses: unicorn-development/odoo-ci-actions/.github/workflows/version-bump.yml@v1
+    uses: unicorn-development/odoo-ci-actions/.github/workflows/version-bump.yml@v2
 ```
 
 That is the entire per-repository footprint. No ruff config to copy, no version
-to maintain: `v1` is a moving major tag, so fixes propagate on their own.
+to maintain: `v2` is a moving major tag, so fixes propagate on their own.
 
-Pin a full commit SHA instead of `v1` if you need immutability, and see
+Pin a full commit SHA instead of `v2` if you need immutability, and see
 [how the wrapper finds its own action](#how-the-wrapper-finds-its-own-action):
 pinning the wrapper does not by itself pin the action.
 
@@ -117,7 +117,7 @@ avoid.
 | `ruff-version` | `>=0.16.1` | pip version specifier, so it must include the operator. Odoo's config needs 0.16.1 or newer. |
 | `python-version` | `3.12` | Python used to run ruff. |
 | `paths` | `.` | Space separated paths to lint. |
-| `actions-ref` | `v1` | Ref this repository's action is taken from. See [pinning](#how-the-wrapper-finds-its-own-action). |
+| `actions-ref` | `v2` | Ref this repository's action is taken from. See [pinning](#how-the-wrapper-finds-its-own-action). |
 
 ### Outputs
 
@@ -205,7 +205,7 @@ check.
 | Input | Default | Description |
 |---|---|---|
 | `modules-root` | `.` | Directory the modules live in. Changed files outside it are ignored. |
-| `actions-ref` | `v1` | Ref this repository's action is taken from. See [pinning](#how-the-wrapper-finds-its-own-action). |
+| `actions-ref` | `v2` | Ref this repository's action is taken from. See [pinning](#how-the-wrapper-finds-its-own-action). |
 
 ### Outputs
 
@@ -249,14 +249,17 @@ checkout without an explicit ref silently takes the default branch -- so the
 action would come from `main` whatever tag the caller pinned, with no error to
 show for it.
 
-Each wrapper therefore checks this repository out at the major tag, `v1`, which
+Each wrapper therefore checks this repository out at the major tag, `v2`, which
 `release.yml` moves to the release commit. Wrapper and action travel together
-for every caller on `@v1`, which is all of them.
+for every caller on `@v2`, which is all of them.
 
 The consequence is that pinning a wrapper to a full commit SHA does not pin the
-action with it: the action still comes from `v1`. Override `actions-ref` to pin
-both, or to test an unreleased branch of this repository from a consumer
-repository.
+action with it: the action still comes from the major tag. Override
+`actions-ref` to pin both, or to test an unreleased branch of this repository
+from a consumer repository.
+
+The default is hardcoded, so it has to be bumped by hand in the commit that
+cuts a new major, before the release is published.
 
 ## Layout
 
@@ -302,4 +305,4 @@ bad release would disable a check in every consuming repository at once,
 silently.
 
 Releases are `vX.Y.Z`; publishing one moves the `vX` tag that callers track.
-Adding a check is a minor bump, so consumers on `@v1` get it automatically.
+Adding a check is a minor bump, so consumers on `@v2` get it automatically.
