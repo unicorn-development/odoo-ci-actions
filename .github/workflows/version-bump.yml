@@ -15,11 +15,6 @@ on:
         type: string
         required: false
         default: '.'
-      fail-on-findings:
-        description: Whether a missing bump fails the job.
-        type: boolean
-        required: false
-        default: true
       actions-ref:
         description: >-
           Ref of odoo-ci-actions the check itself is taken from. Only override
@@ -81,4 +76,3 @@ jobs:
         uses: ./.odoo-ci-actions/version-bump
         with:
           modules-root: ${{ inputs.modules-root }}
-          fail-on-findings: ${{ inputs.fail-on-findings }}

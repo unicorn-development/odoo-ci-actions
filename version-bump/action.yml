@@ -11,13 +11,6 @@ inputs:
       module and need no bump.
     required: false
     default: '.'
-  fail-on-findings:
-    description: >-
-      "true" makes a missing bump fail the job. The inverse of ruff's default,
-      so this check blocks from day one; a repository can still stage its
-      rollout by turning it off.
-    required: false
-    default: 'true'
 
 outputs:
   modules-checked:
@@ -37,7 +30,6 @@ runs:
       shell: bash
       env:
         MODULES_ROOT: ${{ inputs.modules-root }}
-        FAIL_ON_FINDINGS: ${{ inputs.fail-on-findings }}
         SCRIPT: ${{ github.action_path }}/check_version_bump.py
       run: |
         set -uo pipefail
@@ -60,13 +52,13 @@ runs:
           exit 0
         fi
 
+        # A missing bump fails the job. Whether that blocks the merge is the
+        # ruleset's decision, and only the ruleset's: an input that made the
+        # job succeed anyway would satisfy the required check it was meant to
+        # stage, merging the very thing this check exists to catch.
         if [ "$code" -eq 1 ]; then
-          if [ "$FAIL_ON_FINDINGS" = "true" ]; then
-            echo "::error title=Version bump::A changed module is missing a version bump. See the annotations above."
-            exit 1
-          fi
-          echo "::warning title=Version bump::A changed module is missing a version bump. This does not block the merge."
-          exit 0
+          echo "::error title=Version bump::A changed module is missing a version bump. See the annotations above."
+          exit 1
         fi
 
         # Exit code 2 means the check could not run: an unparseable manifest,
