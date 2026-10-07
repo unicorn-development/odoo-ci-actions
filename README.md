@@ -15,7 +15,7 @@ Two checks live here today, one directory each:
 Add one file per check to a module repository:
 
 ```yaml
-# .github/workflows/ruff.yml
+# .github/workflows/ruff-checks-stuff.yml
 name: Ruff
 on:
   pull_request:
@@ -27,7 +27,7 @@ permissions:
   contents: read
 jobs:
   ruff:
-    uses: unicorn-development/odoo-ci-actions/.github/workflows/ruff.yml@v2
+    uses: unicorn-development/odoo-ci-actions/.github/workflows/ruff-checks-stuff.yml@v2
 ```
 
 ```yaml
@@ -272,7 +272,7 @@ version-bump/
   action.yml                   composite action: job shape glue around the check
   check_version_bump.py        the check: diff, grouping, manifest parsing, comparison
 .github/workflows/
-  ruff.yml                     workflow_call wrapper, the deployment layer
+  ruff-checks-stuff.yml        workflow_call wrapper, the deployment layer
   version-bump.yml             workflow_call wrapper, the deployment layer
   test.yml                     self-test
   sync-odoo-config.yml         scheduled refresh of the vendored config
