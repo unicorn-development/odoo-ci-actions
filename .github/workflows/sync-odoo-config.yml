@@ -27,7 +27,7 @@ jobs:
         run: |
           set -euo pipefail
           curl --fail --silent --show-error --location --retry 3 \
-            --output ruff/configs/odoo-fallback.ruff.toml "$URL"
+            --output ruff-checks-stuff/configs/odoo-fallback.ruff.toml "$URL"
 
       # Opens a PR only when the fetched file actually differs.
       # Note: PRs opened with GITHUB_TOKEN do not trigger other workflows, so
@@ -41,4 +41,4 @@ jobs:
           body: |
             `odoo/odoo@master`'s `ruff.toml` changed. This updates the vendored
             fallback used when the upstream fetch fails.
-          add-paths: ruff/configs/odoo-fallback.ruff.toml
+          add-paths: ruff-checks-stuff/configs/odoo-fallback.ruff.toml

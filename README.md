@@ -78,7 +78,8 @@ Odoo's own, resolved in this order:
    `<branch>` is the `odoo-version` input; otherwise the pull request base
    branch when it looks like an Odoo version (`19.0`, `18.0`); otherwise
    `master`. A 17.0 module is therefore linted with 17.0's rules.
-4. If that fetch fails, the vendored copy in `ruff/configs/`, with a warning.
+4. If that fetch fails, the vendored copy in `ruff-checks-stuff/configs/`, with a
+   warning.
 
 The check never falls back to bare ruff defaults, which would bury the diff
 under findings Odoo does not enforce. Whichever source wins is written to the
@@ -260,7 +261,7 @@ repository.
 ## Layout
 
 ```
-ruff/
+ruff-checks-stuff/
   action.yml                   composite action: config resolution, install, run, report
   configs/
     odoo-fallback.ruff.toml    vendored copy of odoo/odoo's ruff.toml

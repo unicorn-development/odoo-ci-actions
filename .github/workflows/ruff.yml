@@ -1,6 +1,6 @@
 # Deployment layer. Owns the job shape (runner, permissions, checkout, name);
-# ruff/action.yml owns what the check actually does. Changing how we deploy
-# (caller stub today, org ruleset later) touches this file only.
+# ruff-checks-stuff/action.yml owns what the check actually does. Changing how
+# we deploy (caller stub today, org ruleset later) touches this file only.
 name: Ruff
 
 on:
@@ -78,18 +78,18 @@ jobs:
       #
       # sparse-checkout keeps tests/fixtures out of the caller's workspace, so
       # the deliberately dirty fixtures can never be linted as caller code.
-      # Everything the action needs must therefore live under ruff/.
+      # Everything the action needs must therefore live under ruff-checks-stuff/.
       - name: Checkout odoo-ci-actions
         uses: actions/checkout@v7
         with:
           repository: unicorn-development/odoo-ci-actions
           ref: ${{ inputs.actions-ref }}
           path: .odoo-ci-actions
-          sparse-checkout: ruff
+          sparse-checkout: ruff-checks-stuff
 
       - name: Ruff
         id: ruff
-        uses: ./.odoo-ci-actions/ruff
+        uses: ./.odoo-ci-actions/ruff-checks-stuff
         with:
           config: ${{ inputs.config }}
           odoo-version: ${{ inputs.odoo-version }}

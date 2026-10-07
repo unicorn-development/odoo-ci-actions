@@ -21,9 +21,9 @@ jobs:
       # --- exit codes and findings -------------------------------------------
       - name: Clean fixture
         id: clean
-        uses: ./ruff
+        uses: ./ruff-checks-stuff
         with:
-          config: ruff/configs/odoo-fallback.ruff.toml
+          config: ruff-checks-stuff/configs/odoo-fallback.ruff.toml
           paths: tests/fixtures/clean
 
       - name: Clean fixture reports no findings
@@ -37,10 +37,10 @@ jobs:
 
       - name: Dirty fixture
         id: dirty
-        uses: ./ruff
+        uses: ./ruff-checks-stuff
         continue-on-error: true
         with:
-          config: ruff/configs/odoo-fallback.ruff.toml
+          config: ruff-checks-stuff/configs/odoo-fallback.ruff.toml
           paths: tests/fixtures/dirty
 
       - name: Dirty fixture fails and reports findings
@@ -56,7 +56,7 @@ jobs:
 
       - name: Broken config
         id: broken
-        uses: ./ruff
+        uses: ./ruff-checks-stuff
         continue-on-error: true
         with:
           config: tests/fixtures/broken-config/ruff.toml
@@ -100,14 +100,14 @@ jobs:
       # resolved config by its effect: see tests/fixtures/version-sensitive.
       - name: Fetch config from the 19.0 branch
         id: fetched_19
-        uses: ./ruff
+        uses: ./ruff-checks-stuff
         with:
           odoo-version: "19.0"
           paths: tests/fixtures/version-sensitive
 
       - name: Fetch config from master
         id: fetched_master
-        uses: ./ruff
+        uses: ./ruff-checks-stuff
         # The fixture is dirty under this config, so the step fails by
         # design. Only its outputs are under test.
         continue-on-error: true
@@ -133,7 +133,7 @@ jobs:
 
       - name: Unresolvable branch falls back to the vendored config
         id: fallback
-        uses: ./ruff
+        uses: ./ruff-checks-stuff
         # The fixture is dirty under this config, so the step fails by
         # design. Only its outputs are under test.
         continue-on-error: true
@@ -155,7 +155,7 @@ jobs:
 
       - name: No odoo-version and a non-version base branch resolves to master
         id: auto
-        uses: ./ruff
+        uses: ./ruff-checks-stuff
         # The fixture is dirty under this config, so the step fails by
         # design. Only its outputs are under test.
         continue-on-error: true
@@ -178,7 +178,7 @@ jobs:
 
       - name: Lint a repository that carries its own config
         id: repo_config
-        uses: ./ruff
+        uses: ./ruff-checks-stuff
         with:
           paths: tests/fixtures/version-sensitive
 
