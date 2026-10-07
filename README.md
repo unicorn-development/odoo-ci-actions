@@ -16,7 +16,7 @@ Add one file per check to a module repository:
 
 ```yaml
 # .github/workflows/ruff-checks-stuff.yml
-name: Ruff
+name: Ruff checks stuff
 on:
   pull_request:
     branches:
@@ -26,7 +26,7 @@ on:
 permissions:
   contents: read
 jobs:
-  ruff:
+  ruff-checks-stuff:
     uses: unicorn-development/odoo-ci-actions/.github/workflows/ruff-checks-stuff.yml@v2
 ```
 
@@ -98,9 +98,9 @@ given explicitly via the `config` input.
 
 A failing check is not the same as a blocked merge. GitHub blocks a merge only
 on a *required* status check, so a repository with existing violations stays
-mergeable while `ruff / Ruff` is absent from the ruleset: the pull request goes
-red, the annotations are on the diff, and the merge button still works. Require
-the check once the repository is clean.
+mergeable while `ruff-checks-stuff / Ruff checks stuff` is absent from the
+ruleset: the pull request goes red, the annotations are on the diff, and the
+merge button still works. Require the check once the repository is clean.
 
 There is deliberately no soft mode. A GitHub Actions job can only conclude
 success, failure, cancelled or skipped -- there is no amber "failed but
