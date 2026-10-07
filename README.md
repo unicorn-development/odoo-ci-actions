@@ -8,7 +8,7 @@ Two checks live here today, one directory each:
 | Check | Catches | Blocks |
 |---|---|---|
 | [ruff](#ruff) | Lint findings, using Odoo's own configuration | Only where a ruleset requires it |
-| [version bump](#version-bump) | A module changed without raising its manifest version | Yes, from day one |
+| [version bump](#version-bump) | A module changed without raising its manifest version | Only where a ruleset requires it |
 
 ## Usage
 
@@ -182,24 +182,17 @@ Odoo's 5-part `19.0.1.0.0` without any scheme input.
 A non-numeric segment, such as `1.0.0-rc1`, is a hard error with an explicit
 message rather than a guess about what was meant.
 
-### It blocks by default
+### What fails the job
 
-The inverse of ruff: there is no backlog of pre-existing violations to clean up
-first, so this check blocks from day one. A repository can still stage its
-rollout:
-
-```yaml
-jobs:
-  version-bump:
-    uses: unicorn-development/odoo-ci-actions/.github/workflows/version-bump.yml@v1
-    with:
-      fail-on-findings: false
-```
-
-Regardless of that setting, the job fails whenever the check could not run at
-all: an unparseable manifest, a manifest without a `version` key, a base branch
-that was never fetched, or a run outside a pull request. None of those are ever
+A missing bump fails it, and so does a check that could not run at all: an
+unparseable manifest, a manifest without a `version` key, a base branch that
+was never fetched, or a run outside a pull request. None of those are ever
 reported as a pass.
+
+There is no input to turn that off. Staging a rollout is the ruleset's job --
+see [making it actually block](#making-it-actually-block) -- and an input that
+made the job succeed on a missing bump would instead *satisfy* the required
+check, merging exactly what the check exists to catch.
 
 There are no ignore globs, no scheme selection and no skip label. If a pull
 request is genuinely a false positive, bumping the version is cheaper than
@@ -211,7 +204,6 @@ check.
 | Input | Default | Description |
 |---|---|---|
 | `modules-root` | `.` | Directory the modules live in. Changed files outside it are ignored. |
-| `fail-on-findings` | `true` | Whether a missing bump fails the job. |
 | `actions-ref` | `v1` | Ref this repository's action is taken from. See [pinning](#how-the-wrapper-finds-its-own-action). |
 
 ### Outputs
@@ -230,7 +222,7 @@ check.
 | Module renamed or moved | One new and one deleted module, so it passes; noted in the summary |
 | Version decreased | Fail, with a message distinct from "not bumped" |
 | Repository level files only | Pass, no modules considered |
-| Unparseable manifest, or no `version` key | Hard error, fails regardless of `fail-on-findings` |
+| Unparseable manifest, or no `version` key | Hard error, distinct from a missing bump |
 | Base branch not fetched | Hard error |
 
 ### Making it actually block

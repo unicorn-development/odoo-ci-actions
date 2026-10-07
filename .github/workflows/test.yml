@@ -251,50 +251,32 @@ jobs:
       - name: Scenario, module not bumped
         run: tests/version_bump_scenario.sh 2.0.0 2.0.0
 
-      - name: Unbumped module, blocking
-        id: unbumped_hard
+      - name: Unbumped module
+        id: unbumped
         uses: ./version-bump
         continue-on-error: true
         with:
           modules-root: tests/fixtures/version-bump
 
-      - name: Unbumped module fails by default
+      - name: Unbumped module fails and names the module
         env:
-          OUTCOME: ${{ steps.unbumped_hard.outcome }}
-          MISSING: ${{ steps.unbumped_hard.outputs.modules-missing-bump }}
+          OUTCOME: ${{ steps.unbumped.outcome }}
+          MISSING: ${{ steps.unbumped.outputs.modules-missing-bump }}
         run: |
           set -euo pipefail
           [ "$OUTCOME" = "failure" ] || { echo "outcome=$OUTCOME, expected failure"; exit 1; }
           [ "$MISSING" = '["tests/fixtures/version-bump/mod_a"]' ] \
             || { echo "modules-missing-bump=$MISSING"; exit 1; }
 
-      - name: Unbumped module, non-blocking
-        id: unbumped_soft
-        uses: ./version-bump
-        with:
-          modules-root: tests/fixtures/version-bump
-          fail-on-findings: false
-
-      - name: fail-on-findings false annotates without failing
-        env:
-          OUTCOME: ${{ steps.unbumped_soft.outcome }}
-          MISSING: ${{ steps.unbumped_soft.outputs.modules-missing-bump }}
-        run: |
-          set -euo pipefail
-          [ "$OUTCOME" = "success" ] || { echo "outcome=$OUTCOME, expected success"; exit 1; }
-          [ "$MISSING" = '["tests/fixtures/version-bump/mod_a"]' ] \
-            || { echo "modules-missing-bump=$MISSING"; exit 1; }
-
       - name: Scenario, unparseable manifest
         run: tests/version_bump_scenario.sh 2.0.0 broken
 
-      - name: Unparseable manifest, non-blocking
+      - name: Unparseable manifest
         id: broken_manifest
         uses: ./version-bump
         continue-on-error: true
         with:
           modules-root: tests/fixtures/version-bump
-          fail-on-findings: false
 
       - name: A check that could not run always fails the job
         env:
