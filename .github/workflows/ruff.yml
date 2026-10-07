@@ -37,7 +37,7 @@ on:
           it to test an unreleased branch of that repository.
         type: string
         required: false
-        default: v1
+        default: v2
     outputs:
       exit-code:
         description: Raw ruff exit code (0 clean, 1 findings, 2 error).
@@ -73,8 +73,13 @@ jobs:
       #
       # The ref is pinned to the major tag instead, which release.yml moves to
       # the release commit, so wrapper and action always travel together for
-      # callers on @v1. Overriding actions-ref is for testing an unreleased
-      # branch of this repository from a consumer repository, nothing else.
+      # callers on the matching major. Overriding actions-ref is for testing an
+      # unreleased branch of this repository from a consumer repository.
+      #
+      # This default must be bumped by hand in the same commit that cuts a new
+      # major, before the release is published. Leaving it behind hands a vN
+      # caller the v(N-1) action: silently the wrong code when the layout
+      # happens to match, a "Can't find action.yml" when it does not.
       #
       # sparse-checkout keeps tests/fixtures out of the caller's workspace, so
       # the deliberately dirty fixtures can never be linted as caller code.
