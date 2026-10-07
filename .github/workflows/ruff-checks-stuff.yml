@@ -1,7 +1,7 @@
 # Deployment layer. Owns the job shape (runner, permissions, checkout, name);
 # ruff-checks-stuff/action.yml owns what the check actually does. Changing how
 # we deploy (caller stub today, org ruleset later) touches this file only.
-name: Ruff
+name: Ruff checks stuff
 
 on:
   workflow_call:
@@ -41,20 +41,21 @@ on:
     outputs:
       exit-code:
         description: Raw ruff exit code (0 clean, 1 findings, 2 error).
-        value: ${{ jobs.ruff.outputs.exit-code }}
+        value: ${{ jobs.ruff-checks-stuff.outputs.exit-code }}
       has-findings:
         description: '"true" when ruff reported findings.'
-        value: ${{ jobs.ruff.outputs.has-findings }}
+        value: ${{ jobs.ruff-checks-stuff.outputs.has-findings }}
 
 # The action never writes. Enforced at the token level, not just by --no-fix.
 permissions:
   contents: read
 
 jobs:
-  ruff:
-    # Keep this name stable: renaming it silently drops any ruleset that
-    # requires the check.
-    name: Ruff
+  ruff-checks-stuff:
+    # The required-status-check context is "<caller's job id> / <this name>",
+    # so both halves must stay stable: renaming either silently drops any
+    # ruleset that requires the check, and the caller owns the left half.
+    name: Ruff checks stuff
     runs-on: ubuntu-latest
     outputs:
       exit-code: ${{ steps.ruff.outputs.exit-code }}
@@ -92,7 +93,7 @@ jobs:
           path: .odoo-ci-actions
           sparse-checkout: ruff-checks-stuff
 
-      - name: Ruff
+      - name: Ruff checks stuff
         id: ruff
         uses: ./.odoo-ci-actions/ruff-checks-stuff
         with:
